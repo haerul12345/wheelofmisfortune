@@ -1,0 +1,386 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dynamic Spinning Wheel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {
+    margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: #0f172a; color: #e5e7eb; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .container { display: flex; gap: 30px; flex-wrap: wrap; align-items: start; }
+  .panel {
+    background: #111827; padding: 16px; border-radius: 12px; width: 340px;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.35);
+  }
+  h2 { margin: 8px 0 12px; }
+  textarea { width: 100%; height: 120px; background: #0f172a; color: #fff; border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.1); }
+  .buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  button { padding: 10px 14px; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
+  #updateBtn { background: #2563eb; color: #fff; }
+  
+  #clearBtn { background: #6b7280; color: #fff; }
+  #spinBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+  
+  
+/* Button style; add spacing if needed */
+  #spinBtn {
+    padding: 10px 26px;
+    border-radius: 10px;
+    border: none;
+    font-weight: 600;
+    background: linear-gradient(90deg, #7c4dff, #ff6f61);
+    color: white;
+    cursor: pointer;
+    box-shadow: 0 8px 16px rgba(124,77,255,0.35);
+  }
+
+  
+  .wheel-box {
+    background: #111827; padding: 16px; border-radius: 12px;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.35);
+	
+align-items: center;    /* horizontally center children */
+  text-align: center;     /* center headings/text */
+
+  }
+  canvas { background: #0f172a; border-radius: 50%; }
+  .needle { position: relative; text-align: center; margin-top: 10px; color: #9ca3af; font-size: 13px; margin-bottom: 20px;}
+  .needle::before {
+    content: ""; position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
+    width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent;
+    border-bottom: 18px solid #f59e0b; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
+  }
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px); z-index: 50;
+  }
+  .modal {
+    background: #1f2937; padding: 20px; border-radius: 12px; text-align: center; color: #fff; width: min(420px, 192vw);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+  }
+  .winner { font-size: 24px; font-weight: 800; color: #22c55e; margin: 10px 0; }
+  .actions { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  
+  <div class="panel">
+    <h2>Lucky-ish People</h2>
+    <textarea id="names" placeholder="Enter names separated by commas or new lines"></textarea>
+    <div class="buttons">
+      <button id="updateBtn">Summon the wheel</button>
+      
+      <button id="clearBtn">Clear</button>
+    </div>
+  </div>
+  <div class="wheel-box">
+    <h2>Wheel of Misfortune</h2>
+    <canvas id="wheel" width="480" height="480" aria-label="Spinning wheel"></canvas>
+    <div class="needle"></div>
+	<button id="spinBtn" disabled>Spin the Wheel!</button>
+  </div>
+</div>
+
+<div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+  <div class="modal">
+    <h3 id="resultTitle">Winner</h3>
+    <div class="winner" id="winnerName">—</div>
+	<div id="winnerMessage" style="margin-top:8px; font-size:18px; color:#FFFFFF;"></div>
+    <div class="actions">		
+      <button id="closeModal">Close</button>
+      <button id="spinAgain">Spin the Wheel again!</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('wheel');
+const ctx = canvas.getContext('2d');
+const namesInput = document.getElementById('names');
+const updateBtn = document.getElementById('updateBtn');
+const spinBtn = document.getElementById('spinBtn');
+const clearBtn = document.getElementById('clearBtn');
+const modalBackdrop = document.getElementById('modalBackdrop');
+const winnerNameEl = document.getElementById('winnerName');
+const closeModalBtn = document.getElementById('closeModal');
+const spinAgainBtn = document.getElementById('spinAgain');
+
+let slices = [], colors = [], rotation = 0, spinning = false;
+const radius = canvas.width / 2, center = { x: radius, y: radius };
+
+// ------- Helpers -------
+function parseNames(raw) {
+  return raw.split(/[\n,]/).map(s => s.trim()).filter(Boolean);
+}
+//function randomColors(n) {
+ // return Array.from({length:n}, (_,i)=>`hsl(${(360/n)*i},70%,50%)`);
+//}
+
+
+// Golden‑angle HSL palette: distinct hues, slight Sat/Light variation
+function randomColors(n) {
+  const GOLDEN_ANGLE = 137.508; // degrees
+  const colors = [];
+  for (let i = 0; i < n; i++) {
+    const h = (i * GOLDEN_ANGLE) % 360;
+    const s = 68 + 7 * Math.sin(i * 0.9);    
+	//const s = 68 + 7 * Math.sin(i * 0.9);    // vary a bit to avoid near matches
+    const l = 52 + 8 * Math.cos(i * 1.1);    // vary a bit to avoid near matches
+    colors.push(`hsl(${h.toFixed(1)}, ${Math.round(s)}%, ${Math.round(l)}%)`);
+  }
+  return colors;
+}
+
+function drawWheel() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save(); ctx.translate(center.x,center.y); ctx.rotate(rotation);
+
+  if (!slices.length) {
+    ctx.fillStyle="#333"; ctx.beginPath(); ctx.arc(0,0,radius-10,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#aaa"; ctx.font="16px system-ui"; ctx.textAlign="center"; ctx.fillText("Add the people & Summon the wheel!",0,0);
+    ctx.restore(); return;
+  }
+
+  const per = (Math.PI*2)/slices.length;
+  for(let i=0;i<slices.length;i++){
+    const start=i*per,end=start+per;
+    // slice
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,radius-10,start,end); ctx.closePath();
+    ctx.fillStyle=colors[i]; ctx.fill();
+    // separator
+    ctx.strokeStyle="rgba(255,255,255,0.15)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(0,0,radius-10,start,end); ctx.stroke();
+    // label
+    ctx.save(); const mid=start+per/2; ctx.rotate(mid); ctx.translate(radius-70,0); ctx.rotate(Math.PI/2);
+    ctx.fillStyle="#e5e7eb"; ctx.font="16px system-ui"; ctx.textAlign="center";
+    const text = slices[i].length>22 ? (slices[i].slice(0,21)+"…") : slices[i];
+    ctx.fillText(text,0,0); ctx.restore();
+  }
+
+  // center cap
+  ctx.beginPath(); ctx.arc(0,0,48,0,Math.PI*2); ctx.fillStyle="#0f172a"; ctx.fill();
+  ctx.strokeStyle="rgba(255,255,255,0.2)"; ctx.lineWidth=3; ctx.stroke();
+
+  ctx.restore();
+}
+
+// ✅ Corrected: pointer-at-top angle mapping
+function angleToIndex(rotationAngle) {
+  if (!slices.length) return -1;
+  const per = (Math.PI * 2) / slices.length;
+
+  // Pointer is at top (3π/2 in canvas). We want the slice whose arc contains
+  // the angle (3π/2 - rotationAngle) in wheel coordinates.
+  let a = (Math.PI / 2) - rotationAngle;
+
+  // Normalize to [0, 2π)
+  a = a % (Math.PI * 2);
+  if (a < 0) a += Math.PI * 2;
+
+  // Find interval index
+  const idx = Math.floor(a / per);
+
+  // Clamp to handle floating point near boundaries
+  return Math.min(Math.max(idx, 0), slices.length - 1);
+}
+
+function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
+
+function spin(){
+  if(spinning || !slices.length) return;
+  spinning = true; spinBtn.disabled = true;
+
+  const per=(Math.PI*2)/slices.length;
+  const extraTurns = 30 + Math.floor(Math.random()*40); // 5–8 turns
+  // Let physics decide winner; no forced index here
+  const targetAngle = (Math.PI*2)*extraTurns + Math.random()*(Math.PI*2);
+  const startRot = rotation, start = performance.now(), duration = 5500; //3200
+
+  (function animate(ts){
+    const t = Math.min(1, (ts - start) / duration);
+    const eased = easeOutCubic(t);
+    rotation = startRot + targetAngle * eased;
+    drawWheel();
+    if (t < 0.95) {
+      requestAnimationFrame(animate);
+    } else {
+      rotation = rotation % (Math.PI*2);
+      const winnerIndex = angleToIndex(rotation);
+      const winner = slices[winnerIndex];
+      showPopup(winner);
+      fireConfetti();
+      spinning = false; spinBtn.disabled = false;
+    }
+  })(performance.now());
+}
+
+function showPopup(name){
+  
+winnerNameEl.textContent = name;
+
+  // Pick random sarcastic message
+  const baseLine = randomItem(wheelSarcasmLines);
+  const message = injectNameIntoLine(baseLine, name);
+
+  // Display message in modal (add an element for it if needed)
+  const sarcasmEl = document.getElementById("winnerMessage");
+  if (sarcasmEl) {
+    sarcasmEl.textContent = message;
+  } else {
+       console.log(message); // fallback if no element exists
+  }
+
+  modalBackdrop.style.display = "flex";
+
+}
+function closePopup(){ modalBackdrop.style.display = "none"; }
+
+// Simple built-in confetti (no external script)
+function fireConfetti(){
+  const confettiCanvas = document.createElement('canvas');
+  confettiCanvas.width = window.innerWidth; confettiCanvas.height = window.innerHeight;
+  confettiCanvas.style.position='fixed'; confettiCanvas.style.top=0; confettiCanvas.style.left=0;
+  confettiCanvas.style.pointerEvents='none'; confettiCanvas.style.zIndex=100;
+  document.body.appendChild(confettiCanvas);
+  const cctx = confettiCanvas.getContext('2d');
+
+  const N = 140;
+  const pieces = Array.from({length:N}, ()=>({
+    x: Math.random()*confettiCanvas.width,
+    y: -20 - Math.random()*200,
+    vx: (Math.random()*2 - 1) * 3,
+    vy: Math.random()*3 + 2,
+    w: Math.random()*6 + 4,
+    h: Math.random()*10 + 6,
+    rot: Math.random()*Math.PI*2,
+    vrot: (Math.random()*2 - 1) * 0.2,
+    color: `hsl(${Math.random()*360},80%,60%)`
+  }));
+  let frame = 0;
+  function step(){
+    cctx.clearRect(0,0,confettiCanvas.width,confettiCanvas.height);
+    pieces.forEach(p=>{
+      p.x += p.vx + Math.sin(frame/20)*0.8;
+      p.y += p.vy;
+      p.rot += p.vrot;
+      cctx.save();
+      cctx.translate(p.x,p.y);
+      cctx.rotate(p.rot);
+      cctx.fillStyle = p.color;
+      cctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+      cctx.restore();
+    });
+    frame++;
+    if (frame < 180) requestAnimationFrame(step);
+    else document.body.removeChild(confettiCanvas);
+  }
+  step();
+}
+
+// Utility: Fisher–Yates shuffle (in-place)
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1)); // 0..i
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+
+
+// ------- Events -------
+updateBtn.onclick = () => {
+  slices = parseNames(namesInput.value);
+  shuffleArray(slices);
+  colors = randomColors(slices.length);
+  rotation = 0;
+  drawWheel();
+  spinBtn.disabled = !slices.length;
+  if (!slices.length) alert("Please enter at least one name.");
+};
+spinBtn.onclick = spin;
+clearBtn.onclick = () => {
+  namesInput.value = ""; slices = []; colors = []; rotation = 0; drawWheel(); spinBtn.disabled = true;
+};
+closeModalBtn.onclick = closePopup;
+spinAgainBtn.onclick = () => { closePopup(); setTimeout(spin, 150); };
+modalBackdrop.onclick = (e) => { if (e.target === modalBackdrop) closePopup(); };
+
+
+// Sarcastic game-show lines
+const wheelSarcasmLines = [
+  "And the wheel has spoken! Our lucky winner is… you! Clearly, fate ran out of better options.",
+  "Congratulations! You’ve beaten the odds… and by odds, we mean pure random chaos.",
+  "The wheel picked you! Cue the dramatic music and pretend we’re all thrilled.",
+  "Big moment! The wheel chose you—because apparently, it loves plot twists.",
+  "And there it is! The wheel’s decision is final… even if our enthusiasm isn’t.",
+  "Ladies and gentlemen, the wheel has chosen… and it went with the most unexpected choice: you!",
+  "Drumroll, please! The wheel picked you—because destiny clearly enjoys trolling us.",
+  "Breaking news: The wheel has spoken! And apparently, it’s in a mischievous mood today.",
+  "Congratulations! You’ve won… absolutely nothing but our collective disappointment.",
+  "The wheel picked you! Clearly, it’s running on pure chaos energy.",
+  "And the winner is… you! Because the wheel loves drama more than we do.",
+  "Cue the confetti! The wheel picked you—because why not ruin our day in style?",
+  "Big applause! The wheel made its choice… and now we all question its judgment.",
+  "The wheel has spoken! And apparently, it’s a fan of plot twists and bad decisions.",
+  "Congratulations! You’ve been chosen by the wheel… and cursed by the rest of us.",
+  "Congrats! You’ve won… the privilege of everyone’s side-eye.",
+"The wheel picked you! Clearly, it ran out of better ideas.",
+"Big news: You’re the winner! And by winner, we mean victim.",
+"Lucky you! Or unlucky us? Hard to tell.",
+"The wheel has spoken… and apparently, it’s trolling us all.",
+"Congratulations! You’ve been chosen—don’t let it go to your head.",
+"Winner alert! Prepare for disappointment disguised as glory.",
+"You did it! Absolutely nothing special, but hey, you spun.",
+"The wheel picked you! Must’ve been impressed by your ability to sit there.",
+"Congrats! You’ve beaten the odds… and ruined our day.",
+"The wheel loves drama—and you’re the plot twist.",
+"Cue the applause! The wheel picked you… for reasons unknown.",
+"Breaking news: You’re the chosen one. We demand a recount.",
+"Winner! Now brace yourself for sarcastic glory.",
+"The wheel picked you! Clearly, destiny has a sense of humor.",
+"Congrats! You’ve unlocked… absolutely nothing. Achievement Unlocked: Mediocrity.",
+"Winner winner… nope, just you. Enjoy the existential crisis.",
+"The wheel picked you! Clearly, it’s binge-watching bad decisions.",
+"Breaking news: You’re the chosen one. Harry Potter is jealous.",
+"Congrats! You’ve beaten the odds… and ruined our Netflix binge.",
+"The wheel loves drama—and you’re the season finale nobody asked for.",
+"Winner alert! Prepare for fame… in your own imagination.",
+"You did it! The wheel says hi. Destiny says LOL.",
+"Congrats! You’re the winner. Alexa, play ‘Oops I Did It Again.’",
+"The wheel picked you! Must’ve been impressed by your ability to exist.",
+"Winner! Now go update your LinkedIn: Professional Spinner.",
+"Cue the applause! The wheel picked you… because chaos needed a mascot.",
+"Breaking news: You’re trending… in the wheel’s private group chat.",
+"Congrats! You’ve been chosen—don’t let it go to your head, superstar.",
+"The wheel picked you! Clearly, it’s running on caffeine and regret.",
+"Winner alert! Your prize? Eternal bragging rights… in a very small circle.",
+"Congrats! You’re the winner. Siri says, ‘Wow, groundbreaking.’",
+"The wheel chose you! Plot twist: It was drunk.",
+"Winner! Now brace yourself for sarcastic glory and zero perks.",
+"Congrats! You’ve been selected. The wheel says, ‘Don’t thank me.’"
+
+];
+
+// Helper to pick random line and inject name
+function randomItem(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function injectNameIntoLine(line, name) {
+  const replaced = line.replace(/\byou\b/i, name);
+  return (replaced === line) ? `${line} (${name})` : replaced;
+}
+
+
+
+// Boot
+drawWheel();
+</script>
+</body>
