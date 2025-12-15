@@ -5,6 +5,7 @@
 <meta charset="UTF-8">
 <title>Wheel of Misfortune</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+
 <style>
   body {
     margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
@@ -16,11 +17,11 @@
     background: #111827; padding: 16px; border-radius: 12px; width: 340px;
     box-shadow: 0 10px 20px rgba(0,0,0,0.35);
   }
-  h2 { margin: 8px 0 12px; }
+  h2 { margin: 8px 0 12px; font-family: 'Nosifer', cursive;}
   textarea { width: 100%; height: 120px; background: #0f172a; color: #fff; border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.1); }
   .buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
   button { padding: 10px 14px; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
-  #updateBtn { background: #2563eb; color: #fff; }
+  #updateBtn { background: linear-gradient(180deg, #8e0b12 0%, #5a0004 100%);  color: #fff; }
   
   #clearBtn { background: #6b7280; color: #fff; }
   #spinBtn:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -32,7 +33,7 @@
     border-radius: 10px;
     border: none;
     font-weight: 600;
-    background: linear-gradient(90deg, #7c4dff, #ff6f61);
+    background: linear-gradient(180deg, #8e0b12 0%, #5a0004 100%); /* deep blood gradient */
     color: white;
     cursor: pointer;
     box-shadow: 0 8px 16px rgba(124,77,255,0.35);
@@ -124,6 +125,7 @@ function parseNames(raw) {
 
 
 // Golden‑angle HSL palette: distinct hues, slight Sat/Light variation
+/*
 function randomColors(n) {
   const GOLDEN_ANGLE = 137.508; // degrees
   const colors = [];
@@ -136,6 +138,31 @@ function randomColors(n) {
   }
   return colors;
 }
+*/
+
+function randomColors(n) {
+  const GOLDEN_ANGLE = 137.508; // degrees
+  const colors = [];
+  for (let i = 0; i < n; i++) {
+    const h = (i * GOLDEN_ANGLE) % 360;
+
+    // Saturation: moderately high, slight variation
+       const sBase = 62;
+    const sVar = 9 * Math.sin(i * 0.85);
+    const s = Math.max(48, Math.min(72, sBase + sVar));
+
+    // Lightness: dark range + nonlinear "shadow curve"
+    const lBase = 28;
+    const lVar = 6 * Math.cos(i * 1.1); // slight per‑index variation
+    const lShadow = -6 * Math.sin(i * 0.35); // pulls values darker unpredictably
+    const l = Math.max(18, Math.min(36, lBase + lVar + lShadow));
+
+    colors.push(`hsl(${h.toFixed(1)}, ${Math.round(s)}%, ${Math.round(l)}%)`);
+  }
+  return colors;
+}
+
+
 
 function drawWheel() {
   ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -384,3 +411,4 @@ function injectNameIntoLine(line, name) {
 drawWheel();
 </script>
 </body>
+
